@@ -150,6 +150,74 @@ def data_preprocess(
   
     return features_train, features_train_scaled, features_test, features_test_scaled, target_train, target_test
 # ---------------------------------------------------------
+# clusterization
+def cluster_data(
+    features_train,
+    target_train,
+    features_train_scaled,
+    features_test_scaled,
+    features_test,
+    target_test
+):
+    """The function for clustering data
+    Parameters:
+        features_train,
+        target_train,
+        features_train_scaled,
+        features_test_scaled,
+        features_test,
+        target_test
+    Returns:
+        numpy arrays with features and target for training and test sets for ITM and OTM clusters 
+    """
+    features_train = pd.DataFrame(
+        features_train, 
+        columns=['t', 'rf', 's_scaled', 'p_scaled']
+    )
+    features_test = pd.DataFrame(
+        features_test, 
+        columns=['t', 'rf', 's_scaled', 'p_scaled']
+    )
+
+    itm_index_train = features_train[
+        features_train['s_scaled'] > 1
+    ].index
+    
+    itm_index_test = features_test[
+        features_test['s_scaled'] > 1
+    ].index
+    
+    otm_index_train = features_train[
+        features_train['s_scaled'] < 1
+    ].index
+    
+    otm_index_test = features_test[
+        features_test['s_scaled'] < 1
+    ].index
+
+    itm_features_train_scaled = features_train_scaled[itm_index_train]
+    itm_target_train = target_train[itm_index_train]
+    
+    itm_features_test_scaled = features_test_scaled[itm_index_test]
+    itm_target_test = target_test[itm_index_test]
+    
+    otm_features_train_scaled = features_train_scaled[otm_index_train]
+    otm_target_train = target_train[otm_index_train]
+    
+    otm_features_test_scaled = features_test_scaled[otm_index_test]
+    otm_target_test = target_test[otm_index_test]
+
+    return (
+        itm_features_train_scaled, 
+        itm_target_train,
+        itm_features_test_scaled, 
+        itm_target_test, 
+        otm_features_train_scaled, 
+        otm_target_train,
+        otm_features_test_scaled, 
+        otm_target_test
+    )
+# ---------------------------------------------------------
 class MLP(nn.Module):
     """
     Class for initialization and training MLP neural network
@@ -526,7 +594,7 @@ def objective(
     if is_cluster:
         param_dict = {
             'hidden_size': [40, 200],
-            'input_size': itm_features_train.shape[1],
+            'input_size': features_train_scaled.shape[1],
             'lr': [0.0001, 0.01],
             'activation': ['tanh', 'sigmoid'],
             'optimizer': ['SGD', 'RMSprop', 'Adam'],
@@ -537,7 +605,7 @@ def objective(
     else:
         param_dict = {
             'hidden_size': [80, 400],
-            'input_size': features_train.shape[1],
+            'input_size': features_train_scaled.shape[1],
             'lr': [0.0001, 0.01],
             'activation': ['tanh', 'sigmoid'],
             'optimizer': ['SGD', 'RMSprop', 'Adam'],
@@ -649,37 +717,6 @@ def objective(
         return np.mean(val_losses)
 
 def itm_objective_wrapper(trial):
-    sample_scaled = generate_data()
-    sample_scaled = data_preprocess(
-        sample_scaled=sample_scaled
-    )
-    (
-         features_train, 
-         features_train_scaled, 
-         features_test, 
-         features_test_scaled, 
-         target_train, 
-         target_test 
-     ) = data_preprocess(
-        sample_scaled=sample_scaled
-    )
-    (
-        itm_features_train_scaled, 
-        itm_target_train, 
-        itm_features_test_scaled, 
-        itm_target_test, 
-        otm_features_train_scaled, 
-        otm_target_train, 
-        otm_features_test_scaled, 
-        otm_target_test
-    ) = cluster_data(
-        features_train,
-        target_train,
-        features_train_scaled,
-        features_test_scaled,
-        features_test,
-        target_test
-    )
     return objective(
         trial=trial, 
         features_train_scaled=itm_features_train_scaled, 
@@ -688,37 +725,6 @@ def itm_objective_wrapper(trial):
     )
 
 def otm_objective_wrapper(trial):
-    sample_scaled = generate_data()
-    sample_scaled = data_preprocess(
-        sample_scaled=sample_scaled
-    )
-    (
-         features_train, 
-         features_train_scaled, 
-         features_test, 
-         features_test_scaled, 
-         target_train, 
-         target_test 
-     ) = data_preprocess(
-        sample_scaled=sample_scaled
-    )
-    (
-        itm_features_train_scaled, 
-        itm_target_train, 
-        itm_features_test_scaled, 
-        itm_target_test, 
-        otm_features_train_scaled, 
-        otm_target_train, 
-        otm_features_test_scaled, 
-        otm_target_test
-    ) = cluster_data(
-        features_train,
-        target_train,
-        features_train_scaled,
-        features_test_scaled,
-        features_test,
-        target_test
-    )
     return objective(
         trial=trial, 
         features_train_scaled=otm_features_train_scaled, 
@@ -727,20 +733,6 @@ def otm_objective_wrapper(trial):
     )
 
 def objective_wrapper(trial):
-    sample_scaled = generate_data()
-    sample_scaled = data_preprocess(
-        sample_scaled=sample_scaled
-    )
-    (
-         features_train, 
-         features_train_scaled, 
-         features_test, 
-         features_test_scaled, 
-         target_train, 
-         target_test 
-     ) = data_preprocess(
-        sample_scaled=sample_scaled
-    )
     return objective(
         trial=trial, 
         features_train_scaled=features_train_scaled, 
@@ -775,6 +767,43 @@ def tune_hyperparameters(
         sampler=sampler,
         pruner=pruner
     )
+
+    sample_scaled = generate_data()
+    (
+        features_train, 
+        features_train_scaled, 
+        features_test, 
+        features_test_scaled, 
+        target_train, 
+        target_test
+    ) = data_preprocess(
+        sample_scaled=sample_scaled
+    )
+
+    if is_cluster and cluster_name is not None:
+        (
+            itm_features_train_scaled, 
+            itm_target_train, 
+            itm_features_test_scaled, 
+            itm_target_test, 
+            otm_features_train_scaled, 
+            otm_target_train, 
+            otm_features_test_scaled, 
+            otm_target_test
+        ) = cluster_data(
+            features_train,
+            target_train,
+            features_train_scaled,
+            features_test_scaled,
+            features_test,
+            target_test
+        )
+        if cluster_name == 'ITM':
+            objective = itm_objective_wrapper
+        elif cluster_name == 'OTM':
+            objective = otm_objective_wrapper
+    else:
+        objective = objective_wrapper
     
     # Ensure that we get n_successful_trials successful trials
     successful_trials = 0
@@ -788,7 +817,6 @@ def tune_hyperparameters(
             objective = otm_objective_wrapper
     else:
         objective = objective_wrapper
-        
     
     while successful_trials < n_successful_trials:
         study.optimize(objective, n_trials=1, n_jobs=-1)
@@ -816,62 +844,3 @@ def tune_hyperparameters(
     fig.show()
 
     return best_trial.params.items()
-# ---------------------------------------------------------
-# clusterization
-def cluster_data(
-    features_train,
-    target_train,
-    features_train_scaled,
-    features_test_scaled,
-    features_test,
-    target_test
-):
-    """The function for clustering data
-    Parameters:
-        features_train,
-        target_train,
-        features_train_scaled,
-        features_test_scaled,
-        features_test,
-        target_test
-    Returns:
-        numpy arrays with features and target for training and test sets for ITM and OTM clusters 
-    """
-    features_train = pd.DataFrame(
-        features_train, 
-        columns=['t', 'rf', 's_scaled', 'p_scaled']
-    )
-    features_test = pd.DataFrame(
-        features_test, 
-        columns=['t', 'rf', 's_scaled', 'p_scaled']
-    )
-
-    itm_index_train = features_train[
-        features_train['s_scaled'] > 1
-    ].index
-    
-    itm_index_test = features_test[
-        features_test['s_scaled'] > 1
-    ].index
-    
-    otm_index_train = features_train[
-        features_train['s_scaled'] < 1
-    ].index
-    
-    otm_index_test = features_test[
-        features_test['s_scaled'] < 1
-    ].index
-
-    itm_features_train_scaled = features_train_scaled[itm_index_train]
-    itm_target_train = target_train[itm_index_train]
-    
-    itm_features_test_scaled = features_test_scaled[itm_index_test]
-    itm_target_test = target_test[itm_index_test]
-    
-    otm_features_train_scaled = features_train_scaled[otm_index_train]
-    otm_target_train = target_train[otm_index_train]
-    
-    otm_features_test_scaled = features_test_scaled[otm_index_test]
-    otm_target_test = target_test[otm_index_test]
-
-    return itm_features_train_scaled, itm_target_train, itm_features_test_scaled, itm_target_test, otm_features_train_scaled, otm_target_train, otm_features_test_scaled, otm_target_test
