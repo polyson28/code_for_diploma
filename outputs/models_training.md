@@ -428,25 +428,25 @@ MSE of the two-step on the test set: 2.979579326313931e-05
 ```python
 itm_model = MLP(
     input_size=itm_features_train_scaled.shape[1], 
-    hidden_size=155, 
-    lr=0.007362865441232394, 
+    hidden_size=186, 
+    lr=0.008831322501128601, 
     optimizer='Adam', 
     activation='sigmoid', 
     initialization='glorot',
     epochs=15, 
     batch_size=256, 
     cv_splits=3,
-    dropout=0.020983382374081514,
+    dropout=0.017795855225182816,
     lr_scheduler=None
 )
-
+​
 itm_train_losses, itm_val_losses, itm_test_loss = itm_model.train_model(
     features_train=itm_features_train_scaled, 
     target_train=itm_target_train,
     features_test=itm_features_test_scaled,
     target_test=itm_target_test
 )
-
+​
 itm_model.plot_train_valid_MSE()
 ```
 ```
@@ -549,25 +549,25 @@ Test MSE loss: 3.17e-05
 ```python
 otm_model = MLP(
     input_size=otm_features_train_scaled.shape[1], 
-    hidden_size=63, 
-    lr=0.009939003381858005, 
-    optimizer='Adam', 
+    hidden_size=126, 
+    lr=0.007782470516967486, 
+    optimizer='RMSprop', 
     activation='sigmoid', 
     initialization='glorot',
     epochs=15, 
     batch_size=256, 
     cv_splits=3,
-    dropout=0.010522015146489011,
+    dropout=0.029803917346959335,
     lr_scheduler=None
 )
-
+​
 otm_train_losses, otm_val_losses, otm_test_loss = otm_model.train_model(
     features_train=otm_features_train_scaled, 
     target_train=otm_target_train,
     features_test=otm_features_test_scaled,
     target_test=otm_target_test
 )
-
+​
 otm_model.plot_train_valid_MSE()
 ```
 ```
