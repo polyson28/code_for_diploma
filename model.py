@@ -648,6 +648,33 @@ def objective(
         return np.mean(val_losses)
 
 def itm_objective_wrapper(trial):
+     (
+         features_train, 
+         features_train_scaled, 
+         features_test, 
+         features_test_scaled, 
+         target_train, 
+         target_test 
+     ) = data_preprocess(
+        sample_scaled=sample_scaled
+    )
+    (
+        itm_features_train_scaled, 
+        itm_target_train, 
+        itm_features_test_scaled, 
+        itm_target_test, 
+        otm_features_train_scaled, 
+        otm_target_train, 
+        otm_features_test_scaled, 
+        otm_target_test
+    ) = cluster_data(
+        features_train,
+        target_train,
+        features_train_scaled,
+        features_test_scaled,
+        features_test,
+        target_test
+    )
     return objective(
         trial=trial, 
         features_train_scaled=itm_features_train_scaled, 
@@ -656,6 +683,33 @@ def itm_objective_wrapper(trial):
     )
 
 def otm_objective_wrapper(trial):
+    (
+         features_train, 
+         features_train_scaled, 
+         features_test, 
+         features_test_scaled, 
+         target_train, 
+         target_test 
+     ) = data_preprocess(
+        sample_scaled=sample_scaled
+    )
+    (
+        itm_features_train_scaled, 
+        itm_target_train, 
+        itm_features_test_scaled, 
+        itm_target_test, 
+        otm_features_train_scaled, 
+        otm_target_train, 
+        otm_features_test_scaled, 
+        otm_target_test
+    ) = cluster_data(
+        features_train,
+        target_train,
+        features_train_scaled,
+        features_test_scaled,
+        features_test,
+        target_test
+    )
     return objective(
         trial=trial, 
         features_train_scaled=otm_features_train_scaled, 
@@ -664,6 +718,16 @@ def otm_objective_wrapper(trial):
     )
 
 def objective_wrapper(trial):
+    (
+         features_train, 
+         features_train_scaled, 
+         features_test, 
+         features_test_scaled, 
+         target_train, 
+         target_test 
+     ) = data_preprocess(
+        sample_scaled=sample_scaled
+    )
     return objective(
         trial=trial, 
         features_train_scaled=features_train_scaled, 
