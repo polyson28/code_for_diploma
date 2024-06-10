@@ -113,6 +113,7 @@ def data_preprocess(
     Returns:
         numpy arrays with train and test features, train and test scaled features, train and test targets
     """
+    sample_scaled['bs_price'] = sample_scaled.apply(lambda row: bs_price_calculator(row), axis=1)
     sample_scaled['s_scaled'] = sample_scaled['s'] / sample_scaled['k']
     sample_scaled['p_scaled'] = np.log(sample_scaled['volatility'] / sample_scaled['k'])
     sample_scaled = sample_scaled.drop(['s', 'k', 'bs_price'], axis=1)
@@ -648,7 +649,11 @@ def objective(
         return np.mean(val_losses)
 
 def itm_objective_wrapper(trial):
-     (
+    sample_scaled = generate_data()
+    sample_scaled = data_preprocess(
+        sample_scaled=sample_scaled
+    )
+    (
          features_train, 
          features_train_scaled, 
          features_test, 
@@ -683,6 +688,10 @@ def itm_objective_wrapper(trial):
     )
 
 def otm_objective_wrapper(trial):
+    sample_scaled = generate_data()
+    sample_scaled = data_preprocess(
+        sample_scaled=sample_scaled
+    )
     (
          features_train, 
          features_train_scaled, 
@@ -718,6 +727,10 @@ def otm_objective_wrapper(trial):
     )
 
 def objective_wrapper(trial):
+    sample_scaled = generate_data()
+    sample_scaled = data_preprocess(
+        sample_scaled=sample_scaled
+    )
     (
          features_train, 
          features_train_scaled, 
