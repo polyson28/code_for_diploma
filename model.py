@@ -511,7 +511,9 @@ def define_model(
 
 def objective(
     trial, 
-    is_cluster=False
+    features_train_scaled,
+    target_train,
+    is_cluster
 ):
     """The function for suggesting the hyperparameters set from the defined 
     Parameters:
@@ -645,12 +647,40 @@ def objective(
             
         return np.mean(val_losses)
 
+def itm_objective_wrapper(trial):
+    return objective(
+        trial=trial, 
+        features_train_scaled=itm_features_train_scaled, 
+        target_train=itm_target_train, 
+        is_cluster=True
+    )
+
+def otm_objective_wrapper(trial):
+    return objective(
+        trial=trial, 
+        features_train_scaled=otm_features_train_scaled, 
+        target_train=otm_target_train, 
+        is_cluster=True
+    )
+
+def objective_wrapper(trial):
+    return objective(
+        trial=trial, 
+        features_train_scaled=features_train_scaled, 
+        target_train=target_train, 
+        is_cluster=False
+    )
+
 def tune_hyperparameters(
-    n_successful_trials
+    n_successful_trials,
+    is_cluster,
+    cluster_name=None
 ):
     """The function for hyperparameters tuning 
     Parameters:
         n_successful_trials: required number of successful trials 
+        is_cluster: whether the hyperparameters are tuned for the model for cluster (True) or for the baseline model (False)
+        cluster_name: ITM (in-the-money) or OTM (out-of-the-money) or None (for the baseline model)
     Returns:
         dictionary with optimal set of hyperparameters 
     """
@@ -673,9 +703,18 @@ def tune_hyperparameters(
     successful_trials = 0
     
     pbar = tqdm(total=n_successful_trials, desc="Successful Trials", unit="trial")
+
+    if is_cluster and cluster_name is not None:
+        if cluster_name == 'ITM':
+            objective = itm_objective_wrapper
+        elif cluster_name == 'OTM':
+            objective = otm_objective_wrapper
+    else:
+        objective = objective_wrapper
+        
     
     while successful_trials < n_successful_trials:
-        study.optimize(otm_objective, n_trials=1, n_jobs=-1)
+        study.optimize(objective, n_trials=1, n_jobs=-1)
         trial = study.trials[-1]
     
         if trial.state == TrialState.COMPLETE:
