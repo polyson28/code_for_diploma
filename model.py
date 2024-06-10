@@ -36,7 +36,7 @@ import itertools
 from joblib import Parallel, delayed
 SEED = 42
 # ---------------------------------------------------------
-# data generation 
+# Data generation 
 def generate_data(
     s_min = 3100,
     s_max = 3500,
@@ -77,7 +77,7 @@ def generate_data(
   
     return sample_scaled
 # ---------------------------------------------------------
-# compute the Black-Scholes proce of the options 
+# Compute the Black-Scholes proce of the options 
 def bs_price_calculator(row):
     """The function for computing the Black-Scholes formula 
     Parameters:
@@ -95,7 +95,7 @@ def bs_price_calculator(row):
 
     return price
 # ---------------------------------------------------------
-# compute moneyness and scaled price of the option, scale data and divide into training, validation and test sets 
+# Compute moneyness and scaled price of the option, scale data and divide into training, validation and test sets 
 def data_preprocess(
     sample_scaled,
     test_size=0.4
@@ -144,7 +144,7 @@ def data_preprocess(
   
     return features_train, features_train_scaled, features_test, features_test_scaled, target_train, target_test
 # ---------------------------------------------------------
-# clusterization
+# Clustering
 def cluster_data(
     features_train,
     target_train,
@@ -212,6 +212,7 @@ def cluster_data(
         otm_target_test
     )
 # ---------------------------------------------------------
+# Initialize and train MLP neural network
 class MLP(nn.Module):
     """
     Class for initialization and training MLP neural network
@@ -497,7 +498,7 @@ class MLP(nn.Module):
         plt.legend()
         plt.show()
 # ---------------------------------------------------------
-# hyperparameters tuning
+# Hyperparameters tuning
 def define_model(
     trial, 
     param_dict,
