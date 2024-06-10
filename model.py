@@ -5,14 +5,11 @@ from numpy.random import RandomState
 import random
 import os
 from scipy.stats import qmc, norm
-from scipy.cluster.hierarchy import linkage, cut_tree, dendrogram
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, silhouette_score
+from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.base import BaseEstimator
-from sklearn.cluster import KMeans, AgglomerativeClustering
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -30,14 +27,11 @@ from optuna.trial import TrialState
 from optuna.samplers import TPESampler, BaseSampler
 from optuna.pruners import MedianPruner
 import matplotlib.pyplot as plt
-from matplotlib_inline import backend_inline
 import seaborn as sns
 import time
 from tqdm import tqdm
 import random
 import collections
-from IPython import display
-from IPython.display import Image, display
 import itertools
 from joblib import Parallel, delayed
 SEED = 42
@@ -717,6 +711,12 @@ def objective(
         return np.mean(val_losses)
 
 def itm_objective_wrapper(trial):
+    """Auxiliary function for selection of hyperparameters in the function 
+    Parameters:
+        trial: trial, corresponds to estimation of particular set of hyperparameters,
+    Returns:
+        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
+    """
     return objective(
         trial=trial, 
         features_train_scaled=itm_features_train_scaled, 
@@ -725,6 +725,12 @@ def itm_objective_wrapper(trial):
     )
 
 def otm_objective_wrapper(trial):
+    """Auxiliary function for selection of hyperparameters in the function 
+    Parameters:
+        trial: trial, corresponds to estimation of particular set of hyperparameters,
+    Returns:
+        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
+    """
     return objective(
         trial=trial, 
         features_train_scaled=otm_features_train_scaled, 
@@ -733,6 +739,12 @@ def otm_objective_wrapper(trial):
     )
 
 def objective_wrapper(trial):
+    """Auxiliary function for selection of hyperparameters in the function 
+    Parameters:
+        trial: trial, corresponds to estimation of particular set of hyperparameters,
+    Returns:
+        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
+    """
     return objective(
         trial=trial, 
         features_train_scaled=features_train_scaled, 
