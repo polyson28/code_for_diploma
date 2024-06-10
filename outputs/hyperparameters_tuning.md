@@ -1,4 +1,4 @@
-# The cells and output of the cells for hyperparamenets tuning 
+# The output of the cells for hyperparamenets tuning 
 
 ## Hyperparameters tuning for the baseline model
 ```
