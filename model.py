@@ -56,6 +56,22 @@ def generate_data(
     vol_max = 0.25,
     n=1000000
 ):
+    """The function for data generation
+    Parameters:
+        s_min: minimum value of the underlying price,
+        s_max: maximum value of the underlying price,
+        k_min: minimum value of the strike,
+        k_max: maximum value of the strike,
+        t_min: minimum value of time-to-maturity,
+        t_max: maximum value of time-to-maturity,
+        rf_min: minimum value of risk-free rate,
+        rf_max: maximum value of risk-free rate,
+        vol_min: minimum value of volatility,
+        vol_max: maximum value of volatility,
+        n: number of data samples for generation 
+    Returns:
+        pd.DataFrame with generated features in the defined intervals 
+    """
     sampler = qmc.LatinHypercube(d=5, seed=SEED)
     sample = sampler.random(n=n)
   
@@ -66,11 +82,15 @@ def generate_data(
     sample_scaled = pd.DataFrame(sample_scaled, columns=['s', 'k', 't', 'rf', 'volatility'])
   
     return sample_scaled
-
-#sample_scaled = generate_data()
 # ---------------------------------------------------------
 # compute the Black-Scholes proce of the options 
 def bs_price_calculator(row):
+    """The function for computing the Black-Scholes formula 
+    Parameters:
+        row: the row of the dataframe, in which the price needs to be computed
+    Returns:
+        computed price (float)
+    """
     d1 = (
         (np.log(row['s'] / row['k']) + (row['rf'] - .5 * row['volatility'] ** 2) * row['t']) /
         (row['volatility'] * np.sqrt(row['t']))
@@ -80,14 +100,19 @@ def bs_price_calculator(row):
     price = row['s'] * norm.cdf(d1) - row['k'] * np.exp(-row['rf'] * row['t']) * norm.cdf(d2)
 
     return price
-
-#sample_scaled['bs_price'] = sample_scaled.apply(lambda row: bs_price_calculator(row), axis=1)
 # ---------------------------------------------------------
 # compute moneyness and scaled price of the option, scale data and divide into training, validation and test sets 
 def data_preprocess(
     sample_scaled,
     test_size=0.4
 ):
+    """The function for data preprocessing before constructing the model
+    Parameters:
+        sample_scaled: dataframe with generated features and computed Black-Scholes option price
+        test_size: the size of the test set relative to the overall dataset 
+    Returns:
+        numpy arrays with train and test features, train and test scaled features, train and test targets
+    """
     sample_scaled['s_scaled'] = sample_scaled['s'] / sample_scaled['k']
     sample_scaled['p_scaled'] = np.log(sample_scaled['volatility'] / sample_scaled['k'])
     sample_scaled = sample_scaled.drop(['s', 'k', 'bs_price'], axis=1)
@@ -123,11 +148,11 @@ def data_preprocess(
     target_test = target_test.values
   
     return features_train, features_train_scaled, features_test, features_test_scaled, target_train, target_test
-
-#features_train, features_train_scaled, features_test, features_test_scaled, target_train, target_test = data_preprocess(sample_scaled=sample_scaled)
 # ---------------------------------------------------------
-# neural network initialization and training 
 class MLP(nn.Module):
+    """
+    Class for initialization and training MLP neural network
+    """
     def __init__(
         self, 
         input_size, 
@@ -141,6 +166,19 @@ class MLP(nn.Module):
         lr_scheduler=None,
         dropout=0.0
     ):
+        """
+        Parameters:
+            input_size: input size (number of features)
+            hidden_size: hidden size (number of neurons in the hidden layer), 
+            lr: learning rate, 
+            optimizer: optimizer, 
+            activation: activation function, 
+            epochs: number of epochs for training, 
+            batch_size: batch size, 
+            cv_splits: number of splits in the cross validation procedure,
+            lr_scheduler: dynamic adjustment of the learning rate,
+            dropout: dropout rate
+        """
         super(MLP, self).__init__()
         
         torch.manual_seed(SEED)
@@ -232,6 +270,12 @@ class MLP(nn.Module):
         self, 
         features
     ):
+        """Forward pass of the neural network
+        Parameters:
+            features: features for performing the forward pass
+        Returns: 
+            predictions of the model
+        """
         return self.net(features)
 
     def train_model(
@@ -242,7 +286,16 @@ class MLP(nn.Module):
         target_test, 
         verbose=True
     ): # features_train and target_train are in np.array format
-
+        """The function for training the MLP neural network
+        Parameters:
+            features_train: features from the training dataset,
+            target_train: target values from the training dataset,
+            features_test: features from the test dataset,
+            target_test: target values from the test dataset, 
+            verbose: whether to print the results while training (print if True)
+        Returns:
+            list of training losses during training, list of validation losses during training, aggregated test loss
+        """
         # split the data into K folds
         # for each fold train and evaluate the model
         fold_num = 0
@@ -354,10 +407,10 @@ class MLP(nn.Module):
         return self.all_train_losses, self.all_val_losses, test_loss_overall
     
     def plot_train_valid_MSE(
-        self, 
-        param_names=False, 
-        title=None
+        self
     ):
+        """The function for plotting the graph of MSE losses on epochs during the training process
+        """
         averaged_train_losses = []
         averaged_val_losses = []
         
@@ -379,8 +432,6 @@ class MLP(nn.Module):
         plt.xlabel('Epoch')
         plt.ylabel('MSE Loss')
         plt.legend()
-        if param_names:
-            plt.title(title)
         plt.show()
 # ---------------------------------------------------------
 # hyperparameters tuning
@@ -388,6 +439,13 @@ def define_model(
     trial, 
     param_dict,
 ):
+    """The functions for defining the model for hypermarameters tuning 
+    Parameters:
+        trial: trial, corresponds to estimation of particular set of hyperparameters,
+        param_dict: dictionary with hyperparameters 
+    Returns:
+        MLP neural network model with defined hyperparameters 
+    """
     torch.manual_seed(SEED)
     
     hidden_size = trial.suggest_int(
@@ -452,17 +510,37 @@ def define_model(
     return net
 
 def objective(
-    trial
+    trial, 
+    is_cluster=False
 ):
-    param_dict = {
-        'hidden_size': [80, 400],
-        'input_size': features_train.shape[1],
-        'lr': [0.0001, 0.01],
-        'activation': ['tanh', 'sigmoid'],
-        'optimizer': ['SGD', 'RMSprop', 'Adam'],
-        'batch_size': [256, 512, 1024, 2048],
-        'dropout': [0.05, 0.3]
-    }
+    """The function for suggesting the hyperparameters set from the defined 
+    Parameters:
+        trial: trial, corresponds to estimation of particular set of hyperparameters,
+        is_cluster: whether the hyperparameters are tuned for the model for cluster (True) or for the baseline model (False)
+    Returns:
+        the aggregated validation MSE loss
+    """
+    if is_cluster:
+        param_dict = {
+            'hidden_size': [40, 200],
+            'input_size': itm_features_train.shape[1],
+            'lr': [0.0001, 0.01],
+            'activation': ['tanh', 'sigmoid'],
+            'optimizer': ['SGD', 'RMSprop', 'Adam'],
+            'initialization': ['glorot'],
+            'batch_size': [256, 512, 1024],
+            'dropout': [0.01, 0.1]
+        }
+    else:
+        param_dict = {
+            'hidden_size': [80, 400],
+            'input_size': features_train.shape[1],
+            'lr': [0.0001, 0.01],
+            'activation': ['tanh', 'sigmoid'],
+            'optimizer': ['SGD', 'RMSprop', 'Adam'],
+            'batch_size': [256, 512, 1024, 2048],
+            'dropout': [0.05, 0.3]
+        }
     
     model = define_model(
         trial=trial,
@@ -566,6 +644,62 @@ def objective(
         fold_num += 1
             
         return np.mean(val_losses)
+
+def tune_hyperparameters(
+    n_successful_trials
+):
+    """The function for hyperparameters tuning 
+    Parameters:
+        n_successful_trials: required number of successful trials 
+    Returns:
+        dictionary with optimal set of hyperparameters 
+    """
+    sampler = TPESampler(
+        n_startup_trials=10,
+        seed=SEED
+    )
+    pruner = MedianPruner(
+        n_startup_trials=20,
+        n_warmup_steps=5,
+        interval_steps=3
+    )
+    study = optuna.create_study(
+        direction='minimize',
+        sampler=sampler,
+        pruner=pruner
+    )
+    
+    # Ensure that we get n_successful_trials successful trials
+    successful_trials = 0
+    
+    pbar = tqdm(total=n_successful_trials, desc="Successful Trials", unit="trial")
+    
+    while successful_trials < n_successful_trials:
+        study.optimize(otm_objective, n_trials=1, n_jobs=-1)
+        trial = study.trials[-1]
+    
+        if trial.state == TrialState.COMPLETE:
+            successful_trials += 1
+            pbar.update(1)  # Update progress bar
+    
+    # Close the progress bar
+    pbar.close()
+    
+    # Print the best trial
+    best_trial = study.best_trial
+    print(f'Best trial: {best_trial.number}')
+    print(f'  Value: {best_trial.value}')
+    print(f'  Params: ')
+    for key, value in best_trial.params.items():
+        print(f'    {key}: {value}')
+    
+    # Print the number of completed trials
+    print(f'Number of successful trials: {successful_trials}')
+    
+    fig = optuna.visualization.plot_optimization_history(study)
+    fig.show()
+
+    return best_trial.params.items()
 # ---------------------------------------------------------
 # clusterization
 def cluster_data(
@@ -576,6 +710,17 @@ def cluster_data(
     features_test,
     target_test
 ):
+    """The function for clustering data
+    Parameters:
+        features_train,
+        target_train,
+        features_train_scaled,
+        features_test_scaled,
+        features_test,
+        target_test
+    Returns:
+        numpy arrays with features and target for training and test sets for ITM and OTM clusters 
+    """
     features_train = pd.DataFrame(
         features_train, 
         columns=['t', 'rf', 's_scaled', 'p_scaled']
