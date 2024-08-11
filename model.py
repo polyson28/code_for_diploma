@@ -34,6 +34,7 @@ import random
 import collections
 import itertools
 from joblib import Parallel, delayed
+from typing import Dict, Union, TypedDict
 SEED = 42
 # ---------------------------------------------------------
 # Data generation 
@@ -428,7 +429,7 @@ class MLP(nn.Module):
                         
                     val_loss_overall = val_loss / len(valid_loader)
                     self.val_losses.append(val_loss_overall)
-                    if verbose:
+                    if self.verbose:
                         print(f"Validation Loss: {np.round(val_loss_overall, 7)}")
                         
                 if self.scheduler is not None:
@@ -499,361 +500,292 @@ class MLP(nn.Module):
         plt.show()
 # ---------------------------------------------------------
 # Hyperparameters tuning
-def define_model(
-    trial, 
-    param_dict,
-):
-    """The functions for defining the model for hypermarameters tuning 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-        param_dict: dictionary with hyperparameters 
-    Returns:
-        MLP neural network model with defined hyperparameters 
+class ParamDict(TypedDict):
+    hidden_size: int
+    input_size: int
+    lr: float
+    activation: str
+    optimizer: str
+    initialization: str
+    batch_size: int
+    dropout: float
+
+class TuneHyperparameters:
     """
-    torch.manual_seed(SEED)
-    
-    hidden_size = trial.suggest_int(
-            'hidden_size', param_dict['hidden_size'][0], param_dict['hidden_size'][1]
-    )
-    activation = trial.suggest_categorical(
-            'activation', param_dict['activation']
-    )
-    dropout = trial.suggest_float(
-            'dropout', param_dict['dropout'][0], param_dict['dropout'][1]
-    )
-    
-    # activation
-    if activation == 'tanh':
-        activation = nn.Tanh()
-    elif activation == 'sigmoid':
-        activation = nn.Sigmoid()
-        
-    # use GPU if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-    net = nn.Sequential(
-        # input layer
-        nn.Linear(param_dict['input_size'], hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        activation,
-
-        # first hidden layer
-        nn.Linear(hidden_size, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        activation,
-        nn.Dropout(dropout),
-        
-        # second hidden layer
-        nn.Linear(hidden_size, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        activation,
-        nn.Dropout(dropout),
-        
-        # third hidden layer
-        nn.Linear(hidden_size, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        activation,
-        nn.Dropout(dropout),
-        
-        # fourth hidden layer
-        nn.Linear(hidden_size, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        nn.Dropout(dropout),
-
-        # output layer
-        nn.Linear(hidden_size, 1),
-        activation
-    )
-    net = net.to(device)
-
-    # initialization
-    for name, param in net.named_parameters():
-        if 'weight' in name and param.dim() > 1:
-            nn.init.xavier_uniform_(param)
-        
-    return net
-
-def objective(
-    trial, 
-    features_train_scaled,
-    target_train,
-    is_cluster
-):
-    """The function for suggesting the hyperparameters set from the defined 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-        is_cluster: whether the hyperparameters are tuned for the model for cluster (True) or for the baseline model (False)
-    Returns:
-        the aggregated validation MSE loss
+    Class for hyperparameters tuning for baseline model and networks for ITM and OTM cluaters 
     """
-    if is_cluster:
-        param_dict = {
-            'hidden_size': [40, 200],
-            'input_size': features_train_scaled.shape[1],
-            'lr': [0.0001, 0.01],
-            'activation': ['tanh', 'sigmoid'],
-            'optimizer': ['SGD', 'RMSprop', 'Adam'],
-            'initialization': ['glorot'],
-            'batch_size': [256, 512, 1024],
-            'dropout': [0.01, 0.1]
-        }
-    else:
-        param_dict = {
-            'hidden_size': [80, 400],
-            'input_size': features_train_scaled.shape[1],
-            'lr': [0.0001, 0.01],
-            'activation': ['tanh', 'sigmoid'],
-            'optimizer': ['SGD', 'RMSprop', 'Adam'],
-            'batch_size': [256, 512, 1024, 2048],
-            'dropout': [0.05, 0.3]
-        }
-    
-    model = define_model(
-        trial=trial,
-        param_dict=param_dict
-    )
-    
-    epochs=20
-    cv_splits=3
-    verbose=False
-    
-    optimizer = trial.suggest_categorical(
-        'optimizer', param_dict['optimizer']
-    )
-    lr = trial.suggest_float(
-        'lr', param_dict['lr'][0], param_dict['lr'][1]
-    )
-    batch_size = trial.suggest_categorical(
-        'batch_size', param_dict['batch_size']
-    )
-    
-    if optimizer == 'SGD':
-        optimizer = optim.SGD(model.parameters(), lr=lr)
-    elif optimizer == 'RMSprop':
-        optimizer = optim.RMSprop(model.parameters(), lr=lr)
-    elif optimizer == 'Adam':
-        optimizer = optim.Adam(model.parameters(), lr=lr)
-    
-    criterion = nn.MSELoss()
-    
-    # use GPU if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # split the data into K folds
-    # for each fold train and evaluate the model
-    fold_num = 0
-    train_losses = []
-    val_losses = []
-    
-    KFold_split = KFold(n_splits=cv_splits, random_state=42, shuffle=True)
-    for train_index, valid_index in KFold_split.split(features_train_scaled):
-        features_train_fold, target_train_fold = (
-            torch.from_numpy(features_train_scaled[train_index]), 
-            torch.from_numpy(target_train[train_index].reshape(-1, 1))
+    def __init__(
+        self,
+        is_cluster: bool,
+        features_train: pd.DataFrame, 
+        features_test: pd.DataFrame, 
+        target_train: pd.DataFrame, 
+        target_test: pd.DataFrame, 
+        param_dict: Union[ParamDict, None] = None, 
+        verbose: bool = False
+    ): 
+        self.is_cluster = is_cluster
+        
+        if param_dict is None: 
+            if self.is_cluster: 
+                self.param_dict = {
+                    'hidden_size': [40, 200],
+                    'input_size': features_train.shape[1],
+                    'lr': [0.0001, 0.01],
+                    'activation': ['tanh', 'sigmoid'],
+                    'optimizer': ['SGD', 'RMSprop', 'Adam'],
+                    'initialization': ['glorot'],
+                    'batch_size': [256, 512, 1024],
+                    'dropout': [0.01, 0.1]
+                }
+            else:
+                self.param_dict = {
+                    'hidden_size': [80, 400],
+                    'input_size': features_train.shape[1],
+                    'lr': [0.0001, 0.01],
+                    'activation': ['tanh', 'sigmoid'],
+                    'optimizer': ['SGD', 'RMSprop', 'Adam'],
+                    'batch_size': [256, 512, 1024, 2048],
+                    'dropout': [0.05, 0.3]
+                }
+        else: 
+            self.param_dict = param_dict
+            
+        self.features_train = features_train
+        self.features_test = features_test
+        self.target_train = target_train
+        self.target_test = target_test 
+        
+        self.verbose = verbose
+        
+    def define_model(
+        self,
+        trial
+    ) -> nn.Sequential:
+        """The functions for defining the model for hypermarameters tuning 
+        Parameters:
+            trial: trial, corresponds to estimation of particular set of hyperparameters,
+            param_dict: dictionary with hyperparameters 
+        Returns:
+            MLP neural network model with defined hyperparameters 
+        """
+        torch.manual_seed(SEED)
+        
+        hidden_size = trial.suggest_int(
+                'hidden_size', self.param_dict['hidden_size'][0], self.param_dict['hidden_size'][1]
         )
-        features_valid_fold, target_valid_fold = (
-            torch.from_numpy(features_train_scaled[valid_index]), 
-            torch.from_numpy(target_train[valid_index].reshape(-1, 1))
+        activation = trial.suggest_categorical(
+                'activation', self.param_dict['activation']
         )
+        dropout = trial.suggest_float(
+                'dropout', self.param_dict['dropout'][0], self.param_dict['dropout'][1]
+        )
+        
+        # activation
+        if activation == 'tanh':
+            activation = nn.Tanh()
+        elif activation == 'sigmoid':
+            activation = nn.Sigmoid()
             
-        # set to GPU
-        features_train_fold = features_train_fold.to(device, dtype=torch.float32)
-        target_train_fold = target_train_fold.to(device, dtype=torch.float32)
-        features_valid_fold = features_valid_fold.to(device, dtype=torch.float32)
-        target_valid_fold = target_valid_fold.to(device, dtype=torch.float32)
+        # use GPU if available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            
+        net = nn.Sequential(
+            # input layer
+            nn.Linear(self.param_dict['input_size'], hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            activation,
 
-        train_dataset = TensorDataset(features_train_fold, target_train_fold)
-        valid_dataset = TensorDataset(features_valid_fold, target_valid_fold)
+            # first hidden layer
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            activation,
+            nn.Dropout(dropout),
+            
+            # second hidden layer
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            activation,
+            nn.Dropout(dropout),
+            
+            # third hidden layer
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            activation,
+            nn.Dropout(dropout),
+            
+            # fourth hidden layer
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            nn.Dropout(dropout),
 
-        # Create DataLoaders (using mini-batches)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        valid_loader = DataLoader(valid_dataset, batch_size=batch_size)
+            # output layer
+            nn.Linear(hidden_size, 1),
+            activation
+        )
+        net = net.to(device)
+
+        # initialization
+        for name, param in net.named_parameters():
+            if 'weight' in name and param.dim() > 1:
+                nn.init.xavier_uniform_(param)
             
-        for epoch in range(epochs):
-            train_loss = 0
-            # for each mini-batch train the model
-            for inputs, labels in train_loader:
-                
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                #  calculate new gradients
-                loss.backward()
-                # step of gradient descent algorithm
-                optimizer.step()
-                train_loss += loss.item()
-                # set gradient values to zero before next step 
-                optimizer.zero_grad()
-                
-            train_loss_overall = train_loss / len(train_loader)
-            train_losses.append(train_loss_overall)
+        return net
             
-            if verbose:
-                print(
-                    f"Fold {fold_num+1}/{cv_splits},"
-                    f"Epoch {epoch+1}/{epochs},"
-                    f"Training Loss: {np.round(train_loss, 4)}"
-                )
+    def objective(
+        self,
+        trial
+    ) -> float:
+        
+        model = self.define_model(
+            trial=trial
+        )
+        
+        epochs=20
+        cv_splits=3
+        
+        optimizer = trial.suggest_categorical(
+            'optimizer', self.param_dict['optimizer']
+        )
+        lr = trial.suggest_float(
+            'lr', self.param_dict['lr'][0], self.param_dict['lr'][1]
+        )
+        batch_size = trial.suggest_categorical(
+            'batch_size', self.param_dict['batch_size']
+        )
+        
+        if optimizer == 'SGD':
+            optimizer = optim.SGD(model.parameters(), lr=lr)
+        elif optimizer == 'RMSprop':
+            optimizer = optim.RMSprop(model.parameters(), lr=lr)
+        elif optimizer == 'Adam':
+            optimizer = optim.Adam(model.parameters(), lr=lr)
+        
+        criterion = nn.MSELoss()
+        
+        # use GPU if available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # split the data into K folds
+        # for each fold train and evaluate the model
+        fold_num = 0
+        train_losses = []
+        val_losses = []
+        
+        KFold_split = KFold(n_splits=cv_splits, random_state=42, shuffle=True)
+        for train_index, valid_index in KFold_split.split(self.features_train):
+            features_train_fold, target_train_fold = (
+                torch.from_numpy(self.features_train[train_index]), 
+                torch.from_numpy(self.target_train[train_index].reshape(-1, 1))
+            )
+            features_valid_fold, target_valid_fold = (
+                torch.from_numpy(self.features_train[valid_index]), 
+                torch.from_numpy(self.target_train[valid_index].reshape(-1, 1))
+            )
                 
-            # Validation loop
-            with torch.no_grad():
-                val_loss = 0.0
-                # for each mini-batch evaluate the model
-                for inputs, labels in valid_loader:
+            # set to GPU
+            features_train_fold = features_train_fold.to(device, dtype=torch.float32)
+            target_train_fold = target_train_fold.to(device, dtype=torch.float32)
+            features_valid_fold = features_valid_fold.to(device, dtype=torch.float32)
+            target_valid_fold = target_valid_fold.to(device, dtype=torch.float32)
+
+            train_dataset = TensorDataset(features_train_fold, target_train_fold)
+            valid_dataset = TensorDataset(features_valid_fold, target_valid_fold)
+
+            # Create DataLoaders (using mini-batches)
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+            valid_loader = DataLoader(valid_dataset, batch_size=batch_size)
+                
+            for epoch in range(epochs):
+                train_loss = 0
+                # for each mini-batch train the model
+                for inputs, labels in train_loader:
+                    
                     outputs = model(inputs)
                     loss = criterion(outputs, labels)
-                    val_loss += loss.item()
-                val_loss /= len(valid_loader)
-                val_losses.append(val_loss)
-                if verbose:
-                    print(f"Validation Loss: {np.round(val_loss, 4)}")
+                    #  calculate new gradients
+                    loss.backward()
+                    # step of gradient descent algorithm
+                    optimizer.step()
+                    train_loss += loss.item()
+                    # set gradient values to zero before next step 
+                    optimizer.zero_grad()
                     
-        fold_num += 1
-            
+                train_loss_overall = train_loss / len(train_loader)
+                train_losses.append(train_loss_overall)
+                
+                if self.verbose:
+                    print(
+                        f"Fold {fold_num+1}/{cv_splits},"
+                        f"Epoch {epoch+1}/{epochs},"
+                        f"Training Loss: {np.round(train_loss, 4)}"
+                    )
+                    
+                # Validation loop
+                with torch.no_grad():
+                    val_loss = 0.0
+                    # for each mini-batch evaluate the model
+                    for inputs, labels in valid_loader:
+                        outputs = model(inputs)
+                        loss = criterion(outputs, labels)
+                        val_loss += loss.item()
+                    val_loss /= len(valid_loader)
+                    val_losses.append(val_loss)
+                    if self.verbose:
+                        print(f"Validation Loss: {np.round(val_loss, 4)}")
+                        
+            fold_num += 1
+                
         return np.mean(val_losses)
-
-def itm_objective_wrapper(trial):
-    """Auxiliary function for selection of hyperparameters in the function 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-    Returns:
-        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
-    """
-    return objective(
-        trial=trial, 
-        features_train_scaled=itm_features_train_scaled, 
-        target_train=itm_target_train, 
-        is_cluster=True
-    )
-
-def otm_objective_wrapper(trial):
-    """Auxiliary function for selection of hyperparameters in the function 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-    Returns:
-        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
-    """
-    return objective(
-        trial=trial, 
-        features_train_scaled=otm_features_train_scaled, 
-        target_train=otm_target_train, 
-        is_cluster=True
-    )
-
-def objective_wrapper(trial):
-    """Auxiliary function for selection of hyperparameters in the function 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-    Returns:
-        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
-    """
-    return objective(
-        trial=trial, 
-        features_train_scaled=features_train_scaled, 
-        target_train=target_train, 
-        is_cluster=False
-    )
-
-def tune_hyperparameters(
-    n_successful_trials,
-    is_cluster,
-    cluster_name=None
-):
-    """The function for hyperparameters tuning 
-    Parameters:
-        n_successful_trials: required number of successful trials 
-        is_cluster: whether the hyperparameters are tuned for the model for cluster (True) or for the baseline model (False)
-        cluster_name: ITM (in-the-money) or OTM (out-of-the-money) or None (for the baseline model)
-    Returns:
-        dictionary with optimal set of hyperparameters 
-    """
-    sampler = TPESampler(
-        n_startup_trials=10,
-        seed=SEED
-    )
-    pruner = MedianPruner(
-        n_startup_trials=20,
-        n_warmup_steps=5,
-        interval_steps=3
-    )
-    study = optuna.create_study(
-        direction='minimize',
-        sampler=sampler,
-        pruner=pruner
-    )
-
-    sample_scaled = generate_data()
-    (
-        features_train, 
-        features_train_scaled, 
-        features_test, 
-        features_test_scaled, 
-        target_train, 
-        target_test
-    ) = data_preprocess(
-        sample_scaled=sample_scaled
-    )
-
-    if is_cluster and cluster_name is not None:
-        (
-            itm_features_train_scaled, 
-            itm_target_train, 
-            itm_features_test_scaled, 
-            itm_target_test, 
-            otm_features_train_scaled, 
-            otm_target_train, 
-            otm_features_test_scaled, 
-            otm_target_test
-        ) = cluster_data(
-            features_train,
-            target_train,
-            features_train_scaled,
-            features_test_scaled,
-            features_test,
-            target_test
+            
+    def tune_hyperparameters(
+        self,
+        n_successfull_trials: int
+    ) -> dict:
+        
+        sampler = TPESampler(
+            n_startup_trials=10,
+            seed=SEED
+            )
+        pruner = MedianPruner(
+            n_startup_trials=20,
+            n_warmup_steps=5,
+            interval_steps=3
         )
-        if cluster_name == 'ITM':
-            objective = itm_objective_wrapper
-        elif cluster_name == 'OTM':
-            objective = otm_objective_wrapper
-    else:
-        objective = objective_wrapper
-    
-    # Ensure that we get n_successful_trials successful trials
-    successful_trials = 0
-    
-    pbar = tqdm(total=n_successful_trials, desc="Successful Trials", unit="trial")
+        study = optuna.create_study(
+            direction='minimize',
+            sampler=sampler,
+            pruner=pruner
+        )
+        
+        # Ensure that we get n_successfull_trials successful trials
+        successful_trials = 0
+        
+        pbar = tqdm(total=n_successfull_trials, desc="Successful Trials", unit="trial")
+        
+        while successful_trials < n_successfull_trials:
+            study.optimize(self.objective, n_trials=1, n_jobs=-1)
+            trial = study.trials[-1]
+        
+            if trial.state == TrialState.COMPLETE:
+                successful_trials += 1
+                pbar.update(1)  # Update progress bar
+        
+        # Close the progress bar
+        pbar.close()
+        
+        # Print the best trial
+        best_trial = study.best_trial
+        print(f'Best trial: {best_trial.number}')
+        print(f'  Value: {best_trial.value}')
+        print(f'  Params: ')
+        for key, value in best_trial.params.items():
+            print(f'    {key}: {value}')
+        
+        # Print the number of completed trials
+        print(f'Number of successful trials: {successful_trials}')
+        
+        fig = optuna.visualization.plot_optimization_history(study)
+        fig.show()
 
-    if is_cluster and cluster_name is not None:
-        if cluster_name == 'ITM':
-            objective = itm_objective_wrapper
-        elif cluster_name == 'OTM':
-            objective = otm_objective_wrapper
-    else:
-        objective = objective_wrapper
-    
-    while successful_trials < n_successful_trials:
-        study.optimize(objective, n_trials=1, n_jobs=-1)
-        trial = study.trials[-1]
-    
-        if trial.state == TrialState.COMPLETE:
-            successful_trials += 1
-            pbar.update(1)  # Update progress bar
-    
-    # Close the progress bar
-    pbar.close()
-    
-    # Print the best trial
-    best_trial = study.best_trial
-    print(f'Best trial: {best_trial.number}')
-    print(f'  Value: {best_trial.value}')
-    print(f'  Params: ')
-    for key, value in best_trial.params.items():
-        print(f'    {key}: {value}')
-    
-    # Print the number of completed trials
-    print(f'Number of successful trials: {successful_trials}')
-    
-    fig = optuna.visualization.plot_optimization_history(study)
-    fig.show()
-
-    return best_trial.params.items()
+        return best_trial.params.items()
