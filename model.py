@@ -34,38 +34,40 @@ import random
 import collections
 import itertools
 from joblib import Parallel, delayed
-from typing import Dict, Union, TypedDict
+from typing import Dict, Union, TypedDict, Tuple
 SEED = 42
 # ---------------------------------------------------------
 # Data generation 
 def generate_data(
-    s_min = 3100,
-    s_max = 3500,
-    k_min = 2800,
-    k_max = 3700,
-    t_min = 7/365,
-    t_max = 91/365,
-    rf_min = 0.08,
-    rf_max = 0.16,
-    vol_min = 0.1,
-    vol_max = 0.25,
-    n=1000000
-):
+    s_min: Union[int, float] = 3100,
+    s_max: Union[int, float] = 3500,
+    k_min: Union[int, float] = 2800,
+    k_max: Union[int, float] = 3700,
+    t_min: Union[int, float] = 7/365,
+    t_max: Union[int, float] = 91/365,
+    rf_min: float = 0.08,
+    rf_max: float = 0.16,
+    vol_min: float = 0.1,
+    vol_max: float = 0.25,
+    n: int = 1000000
+) -> pd.DataFrame:
     """The function for data generation
-    Parameters:
-        s_min: minimum value of the underlying price,
-        s_max: maximum value of the underlying price,
-        k_min: minimum value of the strike,
-        k_max: maximum value of the strike,
-        t_min: minimum value of time-to-maturity,
-        t_max: maximum value of time-to-maturity,
-        rf_min: minimum value of risk-free rate,
-        rf_max: maximum value of risk-free rate,
-        vol_min: minimum value of volatility,
-        vol_max: maximum value of volatility,
-        n: number of data samples for generation 
+
+    Args:
+        s_min (Union[int, float], optional): minimum value of the underlying price (rub). Defaults to 3100.
+        s_max (Union[int, float], optional): maximum value of the underlying price (rub). Defaults to 3500.
+        k_min (Union[int, float], optional): minimum value of the strike (rub). Defaults to 2800.
+        k_max (Union[int, float], optional): maximum value of the strike (rub). Defaults to 3700.
+        t_min (Union[int, float], optional): minimum value of time-to-maturity (years). Defaults to 7/365.
+        t_max (Union[int, float], optional): maximum value of time-to-maturity (years). Defaults to 91/365.
+        rf_min (float, optional): minimum value of risk-free rate. Defaults to 0.08.
+        rf_max (float, optional): maximum value of risk-free rate. Defaults to 0.16.
+        vol_min (float, optional): minimum value of volatility. Defaults to 0.1.
+        vol_max (float, optional): maximum value of volatility. Defaults to 0.25.
+        n (int, optional): number of data samples for generation. Defaults to 1000000.
+
     Returns:
-        pd.DataFrame with generated features in the defined intervals 
+        pd.DataFrame: dataframe with generated features in the defined intervals 
     """
     sampler = qmc.LatinHypercube(d=5, seed=SEED)
     sample = sampler.random(n=n)
@@ -79,12 +81,14 @@ def generate_data(
     return sample_scaled
 # ---------------------------------------------------------
 # Compute the Black-Scholes proce of the options 
-def bs_price_calculator(row):
+def bs_price_calculator(row) -> float:
     """The function for computing the Black-Scholes formula 
-    Parameters:
-        row: the row of the dataframe, in which the price needs to be computed
+
+    Args:
+        row (_type_): the row of the dataframe, in which the price needs to be computed
+
     Returns:
-        computed price (float)
+        float: computed price
     """
     d1 = (
         (np.log(row['s'] / row['k']) + (row['rf'] - .5 * row['volatility'] ** 2) * row['t']) /
@@ -98,15 +102,18 @@ def bs_price_calculator(row):
 # ---------------------------------------------------------
 # Compute moneyness and scaled price of the option, scale data and divide into training, validation and test sets 
 def data_preprocess(
-    sample_scaled,
-    test_size=0.4
-):
+    sample_scaled: pd.DataFrame,
+    test_size: float = 0.4
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """The function for data preprocessing before constructing the model
-    Parameters:
-        sample_scaled: dataframe with generated features and computed Black-Scholes option price
-        test_size: the size of the test set relative to the overall dataset 
+
+    Args:
+        sample_scaled (pd.DataFrame): dataframe with generated features and computed Black-Scholes option price
+        test_size (float, optional): the size of the test set relative to the overall dataset. Defaults to 0.4.
+
     Returns:
-        numpy arrays with train and test features, train and test scaled features, train and test targets
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: numpy arrays with train and test features, 
+        train and test scaled features, train and test targets
     """
     sample_scaled['bs_price'] = sample_scaled.apply(lambda row: bs_price_calculator(row), axis=1)
     sample_scaled['s_scaled'] = sample_scaled['s'] / sample_scaled['k']
@@ -147,23 +154,26 @@ def data_preprocess(
 # ---------------------------------------------------------
 # Clustering
 def cluster_data(
-    features_train,
-    target_train,
-    features_train_scaled,
-    features_test_scaled,
-    features_test,
-    target_test
-):
+    features_train: np.ndarray,
+    target_train: np.ndarray,
+    features_train_scaled: np.ndarray,
+    features_test_scaled: np.ndarray,
+    features_test: np.ndarray,
+    target_test: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """The function for clustering data
-    Parameters:
-        features_train,
-        target_train,
-        features_train_scaled,
-        features_test_scaled,
-        features_test,
-        target_test
+
+    Args:
+        features_train (np.ndarray): features train
+        target_train (np.ndarray): target train
+        features_train_scaled (np.ndarray): features train scaled
+        features_test_scaled (np.ndarray): features test scaled
+        features_test (np.ndarray): features test
+        target_test (np.ndarray): target test 
+
     Returns:
-        numpy arrays with features and target for training and test sets for ITM and OTM clusters 
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: numpy arrays 
+        with features and target for training and test sets for ITM and OTM clusters
     """
     features_train = pd.DataFrame(
         features_train, 
@@ -220,29 +230,29 @@ class MLP(nn.Module):
     """
     def __init__(
         self, 
-        input_size, 
-        hidden_size, 
-        lr, 
-        optimizer, 
-        activation, 
-        epochs, 
-        batch_size, 
-        cv_splits,
-        lr_scheduler=None,
-        dropout=0.0
+        input_size: int, 
+        hidden_size: int, 
+        lr: float, 
+        optimizer: str, 
+        activation: str, 
+        epochs: int, 
+        batch_size: int, 
+        cv_splits: int,
+        lr_scheduler: Union[str, None] = None,
+        dropout: float = 0.0
     ):
         """
-        Parameters:
-            input_size: input size (number of features)
-            hidden_size: hidden size (number of neurons in the hidden layer), 
-            lr: learning rate, 
-            optimizer: optimizer, 
-            activation: activation function, 
-            epochs: number of epochs for training, 
-            batch_size: batch size, 
-            cv_splits: number of splits in the cross validation procedure,
-            lr_scheduler: dynamic adjustment of the learning rate,
-            dropout: dropout rate
+        Args:
+            input_size (int): input size (number of features)
+            hidden_size (int): hidden size (number of neurons in the hidden layer)
+            lr (float): learning rate
+            optimizer (str): optimizer
+            activation (str): activation function
+            epochs (int): number of epochs for training
+            batch_size (int): batch size
+            cv_splits (int): number of splits in the cross validation procedure
+            lr_scheduler (Union[str, None], optional): dynamic adjustment of the learning rate. Defaults to None.
+            dropout (float, optional): dropout rate. Defaults to 0.0.
         """
         super(MLP, self).__init__()
         
@@ -333,33 +343,37 @@ class MLP(nn.Module):
 
     def forward(
         self, 
-        features
+        features: torch.Tensor
     ):
         """Forward pass of the neural network
-        Parameters:
-            features: features for performing the forward pass
-        Returns: 
-            predictions of the model
+
+        Args:
+            features (torch.Tensor): features for performing the forward pass
+
+        Returns:
+            _type_: predictions of the model
         """
         return self.net(features)
 
     def train_model(
         self, 
-        features_train, 
-        target_train,
-        features_test,
-        target_test, 
-        verbose=True
-    ): # features_train and target_train are in np.array format
+        features_train: np.ndarray, 
+        target_train: np.ndarray,
+        features_test: np.ndarray,
+        target_test: np.ndarray, 
+        verbose: bool = True
+    ): 
         """The function for training the MLP neural network
-        Parameters:
-            features_train: features from the training dataset,
-            target_train: target values from the training dataset,
-            features_test: features from the test dataset,
-            target_test: target values from the test dataset, 
-            verbose: whether to print the results while training (print if True)
+
+        Args:
+            features_train (np.ndarray): features from the training dataset
+            target_train (np.ndarray): target values from the training dataset
+            features_test (np.ndarray): features from the test datase
+            target_test (np.ndarray): target values from the test dataset
+            verbose (bool, optional): whether to print the results while training (print if True). Defaults to True.
+
         Returns:
-            list of training losses during training, list of validation losses during training, aggregated test loss
+            _type_: list of training losses during training, list of validation losses during training, aggregated test loss
         """
         # split the data into K folds
         # for each fold train and evaluate the model
@@ -524,6 +538,16 @@ class TuneHyperparameters:
         param_dict: Union[ParamDict, None] = None, 
         verbose: bool = False
     ): 
+        """
+        Args:
+            is_cluster (bool): whether we consider the baseline model (False) or model for clusters (True)
+            features_train (pd.DataFrame): features train
+            features_test (pd.DataFrame): features test
+            target_train (pd.DataFrame): target train
+            target_test (pd.DataFrame): target test 
+            param_dict (Union[ParamDict, None], optional): dictionary with parameters ranges. Defaults to None.
+            verbose (bool, optional): whether to print the outputs (True) or not (False). Defaults to False.
+        """
         self.is_cluster = is_cluster
         
         if param_dict is None: 
@@ -563,11 +587,12 @@ class TuneHyperparameters:
         trial
     ) -> nn.Sequential:
         """The functions for defining the model for hypermarameters tuning 
-        Parameters:
-            trial: trial, corresponds to estimation of particular set of hyperparameters,
-            param_dict: dictionary with hyperparameters 
+
+        Args:
+            trial (_type_): trial, corresponds to estimation of particular set of hyperparameters
+
         Returns:
-            MLP neural network model with defined hyperparameters 
+            nn.Module: MLP neural network model with defined hyperparameters 
         """
         torch.manual_seed(SEED)
         
@@ -636,7 +661,14 @@ class TuneHyperparameters:
         self,
         trial
     ) -> float:
-        
+        """The function for suggesting the hyperparameters set from the defined
+
+        Args:
+            trial (_type_): trial, corresponds to estimation of particular set of hyperparameters
+
+        Returns:
+            float: validation loss (MSE)
+        """
         model = self.define_model(
             trial=trial
         )
@@ -741,8 +773,15 @@ class TuneHyperparameters:
     def tune_hyperparameters(
         self,
         n_successfull_trials: int
-    ) -> dict:
-        
+    ) -> Dict:
+        """The function for hyperparameters tuning
+
+        Args:
+            n_successfull_trials (int):  required number of successful trials 
+
+        Returns:
+            Dict: dictionary with optimal set of hyperparameters 
+        """
         sampler = TPESampler(
             n_startup_trials=10,
             seed=SEED
