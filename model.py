@@ -34,37 +34,40 @@ import random
 import collections
 import itertools
 from joblib import Parallel, delayed
+from typing import Dict, Union, TypedDict, Tuple
 SEED = 42
 # ---------------------------------------------------------
 # Data generation 
 def generate_data(
-    s_min = 3100,
-    s_max = 3500,
-    k_min = 2800,
-    k_max = 3700,
-    t_min = 7/365,
-    t_max = 91/365,
-    rf_min = 0.08,
-    rf_max = 0.16,
-    vol_min = 0.1,
-    vol_max = 0.25,
-    n=1000000
-):
+    s_min: Union[int, float] = 3100,
+    s_max: Union[int, float] = 3500,
+    k_min: Union[int, float] = 2800,
+    k_max: Union[int, float] = 3700,
+    t_min: Union[int, float] = 7/365,
+    t_max: Union[int, float] = 91/365,
+    rf_min: float = 0.08,
+    rf_max: float = 0.16,
+    vol_min: float = 0.1,
+    vol_max: float = 0.25,
+    n: int = 1000000
+) -> pd.DataFrame:
     """The function for data generation
-    Parameters:
-        s_min: minimum value of the underlying price,
-        s_max: maximum value of the underlying price,
-        k_min: minimum value of the strike,
-        k_max: maximum value of the strike,
-        t_min: minimum value of time-to-maturity,
-        t_max: maximum value of time-to-maturity,
-        rf_min: minimum value of risk-free rate,
-        rf_max: maximum value of risk-free rate,
-        vol_min: minimum value of volatility,
-        vol_max: maximum value of volatility,
-        n: number of data samples for generation 
+
+    Args:
+        s_min (Union[int, float], optional): minimum value of the underlying price (rub). Defaults to 3100.
+        s_max (Union[int, float], optional): maximum value of the underlying price (rub). Defaults to 3500.
+        k_min (Union[int, float], optional): minimum value of the strike (rub). Defaults to 2800.
+        k_max (Union[int, float], optional): maximum value of the strike (rub). Defaults to 3700.
+        t_min (Union[int, float], optional): minimum value of time-to-maturity (years). Defaults to 7/365.
+        t_max (Union[int, float], optional): maximum value of time-to-maturity (years). Defaults to 91/365.
+        rf_min (float, optional): minimum value of risk-free rate. Defaults to 0.08.
+        rf_max (float, optional): maximum value of risk-free rate. Defaults to 0.16.
+        vol_min (float, optional): minimum value of volatility. Defaults to 0.1.
+        vol_max (float, optional): maximum value of volatility. Defaults to 0.25.
+        n (int, optional): number of data samples for generation. Defaults to 1000000.
+
     Returns:
-        pd.DataFrame with generated features in the defined intervals 
+        pd.DataFrame: dataframe with generated features in the defined intervals 
     """
     sampler = qmc.LatinHypercube(d=5, seed=SEED)
     sample = sampler.random(n=n)
@@ -78,12 +81,14 @@ def generate_data(
     return sample_scaled
 # ---------------------------------------------------------
 # Compute the Black-Scholes proce of the options 
-def bs_price_calculator(row):
+def bs_price_calculator(row) -> float:
     """The function for computing the Black-Scholes formula 
-    Parameters:
-        row: the row of the dataframe, in which the price needs to be computed
+
+    Args:
+        row (_type_): the row of the dataframe, in which the price needs to be computed
+
     Returns:
-        computed price (float)
+        float: computed price
     """
     d1 = (
         (np.log(row['s'] / row['k']) + (row['rf'] - .5 * row['volatility'] ** 2) * row['t']) /
@@ -97,15 +102,18 @@ def bs_price_calculator(row):
 # ---------------------------------------------------------
 # Compute moneyness and scaled price of the option, scale data and divide into training, validation and test sets 
 def data_preprocess(
-    sample_scaled,
-    test_size=0.4
-):
+    sample_scaled: pd.DataFrame,
+    test_size: float = 0.4
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """The function for data preprocessing before constructing the model
-    Parameters:
-        sample_scaled: dataframe with generated features and computed Black-Scholes option price
-        test_size: the size of the test set relative to the overall dataset 
+
+    Args:
+        sample_scaled (pd.DataFrame): dataframe with generated features and computed Black-Scholes option price
+        test_size (float, optional): the size of the test set relative to the overall dataset. Defaults to 0.4.
+
     Returns:
-        numpy arrays with train and test features, train and test scaled features, train and test targets
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: numpy arrays with train and test features, 
+        train and test scaled features, train and test targets
     """
     sample_scaled['bs_price'] = sample_scaled.apply(lambda row: bs_price_calculator(row), axis=1)
     sample_scaled['s_scaled'] = sample_scaled['s'] / sample_scaled['k']
@@ -146,23 +154,26 @@ def data_preprocess(
 # ---------------------------------------------------------
 # Clustering
 def cluster_data(
-    features_train,
-    target_train,
-    features_train_scaled,
-    features_test_scaled,
-    features_test,
-    target_test
-):
+    features_train: np.ndarray,
+    target_train: np.ndarray,
+    features_train_scaled: np.ndarray,
+    features_test_scaled: np.ndarray,
+    features_test: np.ndarray,
+    target_test: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """The function for clustering data
-    Parameters:
-        features_train,
-        target_train,
-        features_train_scaled,
-        features_test_scaled,
-        features_test,
-        target_test
+
+    Args:
+        features_train (np.ndarray): features train
+        target_train (np.ndarray): target train
+        features_train_scaled (np.ndarray): features train scaled
+        features_test_scaled (np.ndarray): features test scaled
+        features_test (np.ndarray): features test
+        target_test (np.ndarray): target test 
+
     Returns:
-        numpy arrays with features and target for training and test sets for ITM and OTM clusters 
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]: numpy arrays 
+        with features and target for training and test sets for ITM and OTM clusters
     """
     features_train = pd.DataFrame(
         features_train, 
@@ -219,29 +230,29 @@ class MLP(nn.Module):
     """
     def __init__(
         self, 
-        input_size, 
-        hidden_size, 
-        lr, 
-        optimizer, 
-        activation, 
-        epochs, 
-        batch_size, 
-        cv_splits,
-        lr_scheduler=None,
-        dropout=0.0
+        input_size: int, 
+        hidden_size: int, 
+        lr: float, 
+        optimizer: str, 
+        activation: str, 
+        epochs: int, 
+        batch_size: int, 
+        cv_splits: int,
+        lr_scheduler: Union[str, None] = None,
+        dropout: float = 0.0
     ):
         """
-        Parameters:
-            input_size: input size (number of features)
-            hidden_size: hidden size (number of neurons in the hidden layer), 
-            lr: learning rate, 
-            optimizer: optimizer, 
-            activation: activation function, 
-            epochs: number of epochs for training, 
-            batch_size: batch size, 
-            cv_splits: number of splits in the cross validation procedure,
-            lr_scheduler: dynamic adjustment of the learning rate,
-            dropout: dropout rate
+        Args:
+            input_size (int): input size (number of features)
+            hidden_size (int): hidden size (number of neurons in the hidden layer)
+            lr (float): learning rate
+            optimizer (str): optimizer
+            activation (str): activation function
+            epochs (int): number of epochs for training
+            batch_size (int): batch size
+            cv_splits (int): number of splits in the cross validation procedure
+            lr_scheduler (Union[str, None], optional): dynamic adjustment of the learning rate. Defaults to None.
+            dropout (float, optional): dropout rate. Defaults to 0.0.
         """
         super(MLP, self).__init__()
         
@@ -332,33 +343,37 @@ class MLP(nn.Module):
 
     def forward(
         self, 
-        features
+        features: torch.Tensor
     ):
         """Forward pass of the neural network
-        Parameters:
-            features: features for performing the forward pass
-        Returns: 
-            predictions of the model
+
+        Args:
+            features (torch.Tensor): features for performing the forward pass
+
+        Returns:
+            _type_: predictions of the model
         """
         return self.net(features)
 
     def train_model(
         self, 
-        features_train, 
-        target_train,
-        features_test,
-        target_test, 
-        verbose=True
-    ): # features_train and target_train are in np.array format
+        features_train: np.ndarray, 
+        target_train: np.ndarray,
+        features_test: np.ndarray,
+        target_test: np.ndarray, 
+        verbose: bool = True
+    ): 
         """The function for training the MLP neural network
-        Parameters:
-            features_train: features from the training dataset,
-            target_train: target values from the training dataset,
-            features_test: features from the test dataset,
-            target_test: target values from the test dataset, 
-            verbose: whether to print the results while training (print if True)
+
+        Args:
+            features_train (np.ndarray): features from the training dataset
+            target_train (np.ndarray): target values from the training dataset
+            features_test (np.ndarray): features from the test datase
+            target_test (np.ndarray): target values from the test dataset
+            verbose (bool, optional): whether to print the results while training (print if True). Defaults to True.
+
         Returns:
-            list of training losses during training, list of validation losses during training, aggregated test loss
+            _type_: list of training losses during training, list of validation losses during training, aggregated test loss
         """
         # split the data into K folds
         # for each fold train and evaluate the model
@@ -428,7 +443,7 @@ class MLP(nn.Module):
                         
                     val_loss_overall = val_loss / len(valid_loader)
                     self.val_losses.append(val_loss_overall)
-                    if verbose:
+                    if self.verbose:
                         print(f"Validation Loss: {np.round(val_loss_overall, 7)}")
                         
                 if self.scheduler is not None:
@@ -499,361 +514,317 @@ class MLP(nn.Module):
         plt.show()
 # ---------------------------------------------------------
 # Hyperparameters tuning
-def define_model(
-    trial, 
-    param_dict,
-):
-    """The functions for defining the model for hypermarameters tuning 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-        param_dict: dictionary with hyperparameters 
-    Returns:
-        MLP neural network model with defined hyperparameters 
+class ParamDict(TypedDict):
+    hidden_size: int
+    input_size: int
+    lr: float
+    activation: str
+    optimizer: str
+    initialization: str
+    batch_size: int
+    dropout: float
+
+class TuneHyperparameters:
     """
-    torch.manual_seed(SEED)
-    
-    hidden_size = trial.suggest_int(
-            'hidden_size', param_dict['hidden_size'][0], param_dict['hidden_size'][1]
-    )
-    activation = trial.suggest_categorical(
-            'activation', param_dict['activation']
-    )
-    dropout = trial.suggest_float(
-            'dropout', param_dict['dropout'][0], param_dict['dropout'][1]
-    )
-    
-    # activation
-    if activation == 'tanh':
-        activation = nn.Tanh()
-    elif activation == 'sigmoid':
-        activation = nn.Sigmoid()
-        
-    # use GPU if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-    net = nn.Sequential(
-        # input layer
-        nn.Linear(param_dict['input_size'], hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        activation,
-
-        # first hidden layer
-        nn.Linear(hidden_size, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        activation,
-        nn.Dropout(dropout),
-        
-        # second hidden layer
-        nn.Linear(hidden_size, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        activation,
-        nn.Dropout(dropout),
-        
-        # third hidden layer
-        nn.Linear(hidden_size, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        activation,
-        nn.Dropout(dropout),
-        
-        # fourth hidden layer
-        nn.Linear(hidden_size, hidden_size),
-        nn.BatchNorm1d(hidden_size),
-        nn.Dropout(dropout),
-
-        # output layer
-        nn.Linear(hidden_size, 1),
-        activation
-    )
-    net = net.to(device)
-
-    # initialization
-    for name, param in net.named_parameters():
-        if 'weight' in name and param.dim() > 1:
-            nn.init.xavier_uniform_(param)
-        
-    return net
-
-def objective(
-    trial, 
-    features_train_scaled,
-    target_train,
-    is_cluster
-):
-    """The function for suggesting the hyperparameters set from the defined 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-        is_cluster: whether the hyperparameters are tuned for the model for cluster (True) or for the baseline model (False)
-    Returns:
-        the aggregated validation MSE loss
+    Class for hyperparameters tuning for baseline model and networks for ITM and OTM cluaters 
     """
-    if is_cluster:
-        param_dict = {
-            'hidden_size': [40, 200],
-            'input_size': features_train_scaled.shape[1],
-            'lr': [0.0001, 0.01],
-            'activation': ['tanh', 'sigmoid'],
-            'optimizer': ['SGD', 'RMSprop', 'Adam'],
-            'initialization': ['glorot'],
-            'batch_size': [256, 512, 1024],
-            'dropout': [0.01, 0.1]
-        }
-    else:
-        param_dict = {
-            'hidden_size': [80, 400],
-            'input_size': features_train_scaled.shape[1],
-            'lr': [0.0001, 0.01],
-            'activation': ['tanh', 'sigmoid'],
-            'optimizer': ['SGD', 'RMSprop', 'Adam'],
-            'batch_size': [256, 512, 1024, 2048],
-            'dropout': [0.05, 0.3]
-        }
-    
-    model = define_model(
-        trial=trial,
-        param_dict=param_dict
-    )
-    
-    epochs=20
-    cv_splits=3
-    verbose=False
-    
-    optimizer = trial.suggest_categorical(
-        'optimizer', param_dict['optimizer']
-    )
-    lr = trial.suggest_float(
-        'lr', param_dict['lr'][0], param_dict['lr'][1]
-    )
-    batch_size = trial.suggest_categorical(
-        'batch_size', param_dict['batch_size']
-    )
-    
-    if optimizer == 'SGD':
-        optimizer = optim.SGD(model.parameters(), lr=lr)
-    elif optimizer == 'RMSprop':
-        optimizer = optim.RMSprop(model.parameters(), lr=lr)
-    elif optimizer == 'Adam':
-        optimizer = optim.Adam(model.parameters(), lr=lr)
-    
-    criterion = nn.MSELoss()
-    
-    # use GPU if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # split the data into K folds
-    # for each fold train and evaluate the model
-    fold_num = 0
-    train_losses = []
-    val_losses = []
-    
-    KFold_split = KFold(n_splits=cv_splits, random_state=42, shuffle=True)
-    for train_index, valid_index in KFold_split.split(features_train_scaled):
-        features_train_fold, target_train_fold = (
-            torch.from_numpy(features_train_scaled[train_index]), 
-            torch.from_numpy(target_train[train_index].reshape(-1, 1))
-        )
-        features_valid_fold, target_valid_fold = (
-            torch.from_numpy(features_train_scaled[valid_index]), 
-            torch.from_numpy(target_train[valid_index].reshape(-1, 1))
-        )
+    def __init__(
+        self,
+        is_cluster: bool,
+        features_train: pd.DataFrame, 
+        features_test: pd.DataFrame, 
+        target_train: pd.DataFrame, 
+        target_test: pd.DataFrame, 
+        param_dict: Union[ParamDict, None] = None, 
+        verbose: bool = False
+    ): 
+        """
+        Args:
+            is_cluster (bool): whether we consider the baseline model (False) or model for clusters (True)
+            features_train (pd.DataFrame): features train
+            features_test (pd.DataFrame): features test
+            target_train (pd.DataFrame): target train
+            target_test (pd.DataFrame): target test 
+            param_dict (Union[ParamDict, None], optional): dictionary with parameters ranges. Defaults to None.
+            verbose (bool, optional): whether to print the outputs (True) or not (False). Defaults to False.
+        """
+        self.is_cluster = is_cluster
+        
+        if param_dict is None: 
+            if self.is_cluster: 
+                self.param_dict = {
+                    'hidden_size': [40, 200],
+                    'input_size': features_train.shape[1],
+                    'lr': [0.0001, 0.01],
+                    'activation': ['tanh', 'sigmoid'],
+                    'optimizer': ['SGD', 'RMSprop', 'Adam'],
+                    'initialization': ['glorot'],
+                    'batch_size': [256, 512, 1024],
+                    'dropout': [0.01, 0.1]
+                }
+            else:
+                self.param_dict = {
+                    'hidden_size': [80, 400],
+                    'input_size': features_train.shape[1],
+                    'lr': [0.0001, 0.01],
+                    'activation': ['tanh', 'sigmoid'],
+                    'optimizer': ['SGD', 'RMSprop', 'Adam'],
+                    'batch_size': [256, 512, 1024, 2048],
+                    'dropout': [0.05, 0.3]
+                }
+        else: 
+            self.param_dict = param_dict
             
-        # set to GPU
-        features_train_fold = features_train_fold.to(device, dtype=torch.float32)
-        target_train_fold = target_train_fold.to(device, dtype=torch.float32)
-        features_valid_fold = features_valid_fold.to(device, dtype=torch.float32)
-        target_valid_fold = target_valid_fold.to(device, dtype=torch.float32)
+        self.features_train = features_train
+        self.features_test = features_test
+        self.target_train = target_train
+        self.target_test = target_test 
+        
+        self.verbose = verbose
+        
+    def define_model(
+        self,
+        trial
+    ) -> nn.Sequential:
+        """The functions for defining the model for hypermarameters tuning 
 
-        train_dataset = TensorDataset(features_train_fold, target_train_fold)
-        valid_dataset = TensorDataset(features_valid_fold, target_valid_fold)
+        Args:
+            trial (_type_): trial, corresponds to estimation of particular set of hyperparameters
 
-        # Create DataLoaders (using mini-batches)
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        valid_loader = DataLoader(valid_dataset, batch_size=batch_size)
+        Returns:
+            nn.Module: MLP neural network model with defined hyperparameters 
+        """
+        torch.manual_seed(SEED)
+        
+        hidden_size = trial.suggest_int(
+                'hidden_size', self.param_dict['hidden_size'][0], self.param_dict['hidden_size'][1]
+        )
+        activation = trial.suggest_categorical(
+                'activation', self.param_dict['activation']
+        )
+        dropout = trial.suggest_float(
+                'dropout', self.param_dict['dropout'][0], self.param_dict['dropout'][1]
+        )
+        
+        # activation
+        if activation == 'tanh':
+            activation = nn.Tanh()
+        elif activation == 'sigmoid':
+            activation = nn.Sigmoid()
             
-        for epoch in range(epochs):
-            train_loss = 0
-            # for each mini-batch train the model
-            for inputs, labels in train_loader:
-                
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                #  calculate new gradients
-                loss.backward()
-                # step of gradient descent algorithm
-                optimizer.step()
-                train_loss += loss.item()
-                # set gradient values to zero before next step 
-                optimizer.zero_grad()
-                
-            train_loss_overall = train_loss / len(train_loader)
-            train_losses.append(train_loss_overall)
+        # use GPU if available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             
-            if verbose:
-                print(
-                    f"Fold {fold_num+1}/{cv_splits},"
-                    f"Epoch {epoch+1}/{epochs},"
-                    f"Training Loss: {np.round(train_loss, 4)}"
-                )
+        net = nn.Sequential(
+            # input layer
+            nn.Linear(self.param_dict['input_size'], hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            activation,
+
+            # first hidden layer
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            activation,
+            nn.Dropout(dropout),
+            
+            # second hidden layer
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            activation,
+            nn.Dropout(dropout),
+            
+            # third hidden layer
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            activation,
+            nn.Dropout(dropout),
+            
+            # fourth hidden layer
+            nn.Linear(hidden_size, hidden_size),
+            nn.BatchNorm1d(hidden_size),
+            nn.Dropout(dropout),
+
+            # output layer
+            nn.Linear(hidden_size, 1),
+            activation
+        )
+        net = net.to(device)
+
+        # initialization
+        for name, param in net.named_parameters():
+            if 'weight' in name and param.dim() > 1:
+                nn.init.xavier_uniform_(param)
+            
+        return net
+            
+    def objective(
+        self,
+        trial
+    ) -> float:
+        """The function for suggesting the hyperparameters set from the defined
+
+        Args:
+            trial (_type_): trial, corresponds to estimation of particular set of hyperparameters
+
+        Returns:
+            float: validation loss (MSE)
+        """
+        model = self.define_model(
+            trial=trial
+        )
+        
+        epochs=20
+        cv_splits=3
+        
+        optimizer = trial.suggest_categorical(
+            'optimizer', self.param_dict['optimizer']
+        )
+        lr = trial.suggest_float(
+            'lr', self.param_dict['lr'][0], self.param_dict['lr'][1]
+        )
+        batch_size = trial.suggest_categorical(
+            'batch_size', self.param_dict['batch_size']
+        )
+        
+        if optimizer == 'SGD':
+            optimizer = optim.SGD(model.parameters(), lr=lr)
+        elif optimizer == 'RMSprop':
+            optimizer = optim.RMSprop(model.parameters(), lr=lr)
+        elif optimizer == 'Adam':
+            optimizer = optim.Adam(model.parameters(), lr=lr)
+        
+        criterion = nn.MSELoss()
+        
+        # use GPU if available
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # split the data into K folds
+        # for each fold train and evaluate the model
+        fold_num = 0
+        train_losses = []
+        val_losses = []
+        
+        KFold_split = KFold(n_splits=cv_splits, random_state=42, shuffle=True)
+        for train_index, valid_index in KFold_split.split(self.features_train):
+            features_train_fold, target_train_fold = (
+                torch.from_numpy(self.features_train[train_index]), 
+                torch.from_numpy(self.target_train[train_index].reshape(-1, 1))
+            )
+            features_valid_fold, target_valid_fold = (
+                torch.from_numpy(self.features_train[valid_index]), 
+                torch.from_numpy(self.target_train[valid_index].reshape(-1, 1))
+            )
                 
-            # Validation loop
-            with torch.no_grad():
-                val_loss = 0.0
-                # for each mini-batch evaluate the model
-                for inputs, labels in valid_loader:
+            # set to GPU
+            features_train_fold = features_train_fold.to(device, dtype=torch.float32)
+            target_train_fold = target_train_fold.to(device, dtype=torch.float32)
+            features_valid_fold = features_valid_fold.to(device, dtype=torch.float32)
+            target_valid_fold = target_valid_fold.to(device, dtype=torch.float32)
+
+            train_dataset = TensorDataset(features_train_fold, target_train_fold)
+            valid_dataset = TensorDataset(features_valid_fold, target_valid_fold)
+
+            # Create DataLoaders (using mini-batches)
+            train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+            valid_loader = DataLoader(valid_dataset, batch_size=batch_size)
+                
+            for epoch in range(epochs):
+                train_loss = 0
+                # for each mini-batch train the model
+                for inputs, labels in train_loader:
+                    
                     outputs = model(inputs)
                     loss = criterion(outputs, labels)
-                    val_loss += loss.item()
-                val_loss /= len(valid_loader)
-                val_losses.append(val_loss)
-                if verbose:
-                    print(f"Validation Loss: {np.round(val_loss, 4)}")
+                    #  calculate new gradients
+                    loss.backward()
+                    # step of gradient descent algorithm
+                    optimizer.step()
+                    train_loss += loss.item()
+                    # set gradient values to zero before next step 
+                    optimizer.zero_grad()
                     
-        fold_num += 1
-            
+                train_loss_overall = train_loss / len(train_loader)
+                train_losses.append(train_loss_overall)
+                
+                if self.verbose:
+                    print(
+                        f"Fold {fold_num+1}/{cv_splits},"
+                        f"Epoch {epoch+1}/{epochs},"
+                        f"Training Loss: {np.round(train_loss, 4)}"
+                    )
+                    
+                # Validation loop
+                with torch.no_grad():
+                    val_loss = 0.0
+                    # for each mini-batch evaluate the model
+                    for inputs, labels in valid_loader:
+                        outputs = model(inputs)
+                        loss = criterion(outputs, labels)
+                        val_loss += loss.item()
+                    val_loss /= len(valid_loader)
+                    val_losses.append(val_loss)
+                    if self.verbose:
+                        print(f"Validation Loss: {np.round(val_loss, 4)}")
+                        
+            fold_num += 1
+                
         return np.mean(val_losses)
+            
+    def tune_hyperparameters(
+        self,
+        n_successfull_trials: int
+    ) -> Dict:
+        """The function for hyperparameters tuning
 
-def itm_objective_wrapper(trial):
-    """Auxiliary function for selection of hyperparameters in the function 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-    Returns:
-        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
-    """
-    return objective(
-        trial=trial, 
-        features_train_scaled=itm_features_train_scaled, 
-        target_train=itm_target_train, 
-        is_cluster=True
-    )
+        Args:
+            n_successfull_trials (int):  required number of successful trials 
 
-def otm_objective_wrapper(trial):
-    """Auxiliary function for selection of hyperparameters in the function 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-    Returns:
-        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
-    """
-    return objective(
-        trial=trial, 
-        features_train_scaled=otm_features_train_scaled, 
-        target_train=otm_target_train, 
-        is_cluster=True
-    )
-
-def objective_wrapper(trial):
-    """Auxiliary function for selection of hyperparameters in the function 
-    Parameters:
-        trial: trial, corresponds to estimation of particular set of hyperparameters,
-    Returns:
-        objective with plugged in parameters (trial, features_train_scaled, target_train, is_cluster)
-    """
-    return objective(
-        trial=trial, 
-        features_train_scaled=features_train_scaled, 
-        target_train=target_train, 
-        is_cluster=False
-    )
-
-def tune_hyperparameters(
-    n_successful_trials,
-    is_cluster,
-    cluster_name=None
-):
-    """The function for hyperparameters tuning 
-    Parameters:
-        n_successful_trials: required number of successful trials 
-        is_cluster: whether the hyperparameters are tuned for the model for cluster (True) or for the baseline model (False)
-        cluster_name: ITM (in-the-money) or OTM (out-of-the-money) or None (for the baseline model)
-    Returns:
-        dictionary with optimal set of hyperparameters 
-    """
-    sampler = TPESampler(
-        n_startup_trials=10,
-        seed=SEED
-    )
-    pruner = MedianPruner(
-        n_startup_trials=20,
-        n_warmup_steps=5,
-        interval_steps=3
-    )
-    study = optuna.create_study(
-        direction='minimize',
-        sampler=sampler,
-        pruner=pruner
-    )
-
-    sample_scaled = generate_data()
-    (
-        features_train, 
-        features_train_scaled, 
-        features_test, 
-        features_test_scaled, 
-        target_train, 
-        target_test
-    ) = data_preprocess(
-        sample_scaled=sample_scaled
-    )
-
-    if is_cluster and cluster_name is not None:
-        (
-            itm_features_train_scaled, 
-            itm_target_train, 
-            itm_features_test_scaled, 
-            itm_target_test, 
-            otm_features_train_scaled, 
-            otm_target_train, 
-            otm_features_test_scaled, 
-            otm_target_test
-        ) = cluster_data(
-            features_train,
-            target_train,
-            features_train_scaled,
-            features_test_scaled,
-            features_test,
-            target_test
+        Returns:
+            Dict: dictionary with optimal set of hyperparameters 
+        """
+        sampler = TPESampler(
+            n_startup_trials=10,
+            seed=SEED
+            )
+        pruner = MedianPruner(
+            n_startup_trials=20,
+            n_warmup_steps=5,
+            interval_steps=3
         )
-        if cluster_name == 'ITM':
-            objective = itm_objective_wrapper
-        elif cluster_name == 'OTM':
-            objective = otm_objective_wrapper
-    else:
-        objective = objective_wrapper
-    
-    # Ensure that we get n_successful_trials successful trials
-    successful_trials = 0
-    
-    pbar = tqdm(total=n_successful_trials, desc="Successful Trials", unit="trial")
+        study = optuna.create_study(
+            direction='minimize',
+            sampler=sampler,
+            pruner=pruner
+        )
+        
+        # Ensure that we get n_successfull_trials successful trials
+        successful_trials = 0
+        
+        pbar = tqdm(total=n_successfull_trials, desc="Successful Trials", unit="trial")
+        
+        while successful_trials < n_successfull_trials:
+            study.optimize(self.objective, n_trials=1, n_jobs=-1)
+            trial = study.trials[-1]
+        
+            if trial.state == TrialState.COMPLETE:
+                successful_trials += 1
+                pbar.update(1)  # Update progress bar
+        
+        # Close the progress bar
+        pbar.close()
+        
+        # Print the best trial
+        best_trial = study.best_trial
+        print(f'Best trial: {best_trial.number}')
+        print(f'  Value: {best_trial.value}')
+        print(f'  Params: ')
+        for key, value in best_trial.params.items():
+            print(f'    {key}: {value}')
+        
+        # Print the number of completed trials
+        print(f'Number of successful trials: {successful_trials}')
+        
+        fig = optuna.visualization.plot_optimization_history(study)
+        fig.show()
 
-    if is_cluster and cluster_name is not None:
-        if cluster_name == 'ITM':
-            objective = itm_objective_wrapper
-        elif cluster_name == 'OTM':
-            objective = otm_objective_wrapper
-    else:
-        objective = objective_wrapper
-    
-    while successful_trials < n_successful_trials:
-        study.optimize(objective, n_trials=1, n_jobs=-1)
-        trial = study.trials[-1]
-    
-        if trial.state == TrialState.COMPLETE:
-            successful_trials += 1
-            pbar.update(1)  # Update progress bar
-    
-    # Close the progress bar
-    pbar.close()
-    
-    # Print the best trial
-    best_trial = study.best_trial
-    print(f'Best trial: {best_trial.number}')
-    print(f'  Value: {best_trial.value}')
-    print(f'  Params: ')
-    for key, value in best_trial.params.items():
-        print(f'    {key}: {value}')
-    
-    # Print the number of completed trials
-    print(f'Number of successful trials: {successful_trials}')
-    
-    fig = optuna.visualization.plot_optimization_history(study)
-    fig.show()
-
-    return best_trial.params.items()
+        return best_trial.params.items()
